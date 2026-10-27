@@ -92,13 +92,15 @@ const TILE_KEYS = tileKeys;
 ### 2. Weighted Ground Tile System
 
 `GameScene.js` builds a weighted `GROUND_TILES` array at module load:
-- `'grass'` × 50 (most common)
-- `'dirt'` × 25
-- All numbered tiles (from `@tile-keys` slice(2)) × 1 each
+- `'grass'` × 80 (most common)
+- `'dirt'` × 20
+- Numbered tiles are **excluded** from the random ground generation to avoid
+  placing furniture/objects as floor. They remain loaded and available for
+  manual placement.
 
 Tiles are drawn onto a single `RenderTexture` (64×64 grid) covering the entire
 2000×2000 world. Using a render texture means the ground is drawn once, not per
-frame — important for performance with ~536 tile variants.
+frame — important for performance with many tile variants.
 
 ### 3. Phaser Scene Lifecycle
 

@@ -15,12 +15,10 @@ const TILE_KEYS = tileKeys;
  */
 const GROUND_TILES = (() => {
   const weighted = [];
-  // Base ground tiles are heavily weighted
-  for (let i = 0; i < 50; i++) weighted.push('grass');
-  for (let i = 0; i < 25; i++) weighted.push('dirt');
-  // All numbered tiles (skipping dirt & grass at indices 0 and 1)
-  // appear at lower frequency for variety
-  tileKeys.slice(2).forEach((key) => weighted.push(key));
+  // Base ground tiles are heavily weighted to prevent "random object" noise.
+  // Grass and dirt are the only true ground tiles in the asset pack.
+  for (let i = 0; i < 80; i++) weighted.push('grass');
+  for (let i = 0; i < 20; i++) weighted.push('dirt');
   return weighted;
 })();
 
