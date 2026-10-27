@@ -24,10 +24,22 @@
 Upgrade names match the selected character, but purchases and levels remain
 shared between characters. Existing saves carry over without resetting progress.
 
-Move with WASD, arrow keys, or by holding the pointer toward a destination.
-Held mouse/touch movement follows the pointer's current screen position as the
-camera scrolls; you do not need to keep moving the mouse to continue traveling.
-The player stops within 8 world pixels of the pointer without flipping direction.
+### Movement controls
+
+- **Desktop:** Move with WASD, arrow keys, or by holding the mouse toward a
+  destination. Held mouse movement follows the pointer as the camera scrolls;
+  you do not need to keep moving the mouse to continue traveling. The player
+  stops within 8 world pixels of the pointer without flipping direction.
+- **Touch:** Use the bottom-left analog stick, keeping your finger away from
+  the character and the path ahead. Drag farther from its center to move
+  faster, up to your upgraded movement speed. Release to stop. Touching the
+  game world no longer moves the character.
+
+The stick appears on touch-capable/coarse-pointer devices (including hybrid
+laptops), with a fallback to show it when touch or pen input is first detected.
+Its size is independent of canvas scaling. It captures one finger at a time
+and resets on release, cancellation, focus loss, resizing, pausing, or ending a
+run. Desktop mouse and keyboard controls remain available on hybrid devices.
 After a game over, press R to continue with the same character and saved upgrades.
 
 Tap or click **Menu** during a run (or press **Escape**) to pause. Choose
@@ -41,7 +53,12 @@ even when the game canvas shrinks on mobile.
 
 The main menu shows each character's weapon and highlights the current selection.
 Choose a card, then use the labeled Play button to start. The game scales to fit
-the browser window while preserving its 800x600 play area.
+the browser window while preserving its 1024x576 (16:9) widescreen play area.
+On mobile, rotate the device to landscape for a wider view. The canvas refits
+automatically without restarting the run, including when browser toolbars
+change the available height. Portrait still works with letterboxing; rotation
+is not locked. The joystick and Menu button stay at fixed CSS sizes and respect
+device safe areas in either orientation.
 
 ## Publishing to GitHub Pages
 

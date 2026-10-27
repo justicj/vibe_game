@@ -110,12 +110,12 @@ export default class StartScene extends Phaser.Scene {
       this.scene.start('GameScene', { selectedCharacter: selectedChar });
     });
 
-    this.add.text(centerX, height - 54, 'WASD / Arrows or hold pointer to move', {
+    this.add.text(centerX, height - 54, 'Desktop: WASD / Arrows or hold mouse', {
       fontSize: '16px',
       color: '#aaaaaa',
     }).setOrigin(0.5);
 
-    this.add.text(centerX, height - 28, 'Weapons attack automatically', {
+    this.add.text(centerX, height - 28, 'Touch: left stick | Rotate for landscape | Auto attack', {
       fontSize: '14px',
       color: '#888888',
     }).setOrigin(0.5);

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import tileKeys from '@tile-keys';
+import TouchJoystick from '../input/TouchJoystick.js';
 
 /**
  * All available tile texture keys from public/assets/tiles/.
@@ -252,8 +253,11 @@ export default class GameScene extends Phaser.Scene {
       });
     }
 
-    // ---- 5. Touch / Mouse controls ----
-    // Simple relative movement: pointer down sets a target direction
+    // ---- 5. Touch joystick / Mouse controls ----
+    this.touchJoystick = new TouchJoystick(document.getElementById('touch-joystick'));
+    this.touchJoystick.setEnabled(true);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.touchJoystick.destroy());
+
     this.input.on('pointerdown', (pointer) => {
       // During game over, let the upgrade screen handle input; otherwise restart
       if (this.gameOver) {
@@ -262,15 +266,11 @@ export default class GameScene extends Phaser.Scene {
         }
         return;
       }
+      if (pointer.wasTouch) return;
       this.pointerTarget = pointer;
     });
-    this.input.on('pointerup', () => {
-      this.pointerTarget = null;
-    });
-    this.input.on('pointermove', (pointer) => {
-      if (this.pointerTarget && pointer.isDown) {
-        this.pointerTarget = pointer;
-      }
+    this.input.on('pointerup', (pointer) => {
+      if (pointer === this.pointerTarget) this.pointerTarget = null;
     });
 
     // Space bar for shooting
@@ -301,6 +301,13 @@ export default class GameScene extends Phaser.Scene {
     const inputEvents = ['mousedown', 'mouseup', 'touchstart', 'touchend'];
     const stopInput = (event) => event.stopPropagation();
     const pause = () => this.pauseGame();
+    // Secondary touches may not generate clicks while the joystick is held.
+    const pauseTouch = (event) => {
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+        event.preventDefault();
+        this.pauseGame();
+      }
+    };
     const resume = () => this.resumeGame();
     const upgrade = () => this.endRun();
     const quit = () => this.quitToMenu();
@@ -320,6 +327,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.pauseButton.hidden = false;
     this.pauseButton.addEventListener('click', pause);
+    this.pauseButton.addEventListener('pointerdown', pauseTouch);
     resumeButton.addEventListener('click', resume);
     upgradeButton.addEventListener('click', upgrade);
     quitButton.addEventListener('click', quit);
@@ -332,6 +340,7 @@ export default class GameScene extends Phaser.Scene {
       this.pauseButton.hidden = true;
       this.pauseDialog.close();
       this.pauseButton.removeEventListener('click', pause);
+      this.pauseButton.removeEventListener('pointerdown', pauseTouch);
       resumeButton.removeEventListener('click', resume);
       upgradeButton.removeEventListener('click', upgrade);
       quitButton.removeEventListener('click', quit);
@@ -349,6 +358,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.pauseStartedAt = this.game.loop.now;
     this.pointerTarget = null;
+    this.touchJoystick.setEnabled(false);
     this.player.setVelocity(0, 0);
     this.input.keyboard.resetKeys();
     this.pauseDialog.showModal();
@@ -369,6 +379,7 @@ export default class GameScene extends Phaser.Scene {
     this.pauseDialog.close();
     this.pauseButton.focus({ preventScroll: true });
     this.scene.resume();
+    this.touchJoystick.setEnabled(true);
   }
 
   /** Save collected progress and end the current run without a death penalty. */
@@ -450,7 +461,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= speed;
     if (this.cursors.down.isDown || this.wasd.down.isDown) vy += speed;
 
-    // Pointer (touch / mouse) – move toward pointer while pressed
+    // Mouse – move toward pointer while pressed
     if (this.pointerTarget) {
       // Input-event world coordinates go stale as the camera follows the player.
       this.pointerTarget.updateWorldPoint(this.cameras.main);
@@ -468,6 +479,11 @@ export default class GameScene extends Phaser.Scene {
         vx = (dx / distance) * moveSpeed;
         vy = (dy / distance) * moveSpeed;
       }
+    }
+
+    if (this.touchJoystick.pointerId !== null) {
+      vx = this.touchJoystick.vector.x * speed;
+      vy = this.touchJoystick.vector.y * speed;
     }
 
     this.player.setVelocity(vx, vy);
@@ -682,6 +698,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.gameOver = true;
     this.pauseButton.hidden = true;
+    this.touchJoystick.setEnabled(false);
     if (defeated) this.hp = 0;
     this.updateHUD(this.game.loop.now);
 
