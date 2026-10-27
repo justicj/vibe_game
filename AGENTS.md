@@ -33,7 +33,7 @@ vibe_game/
 ├── AGENTS.md               # This file
 ├── public/                 # Static assets served at root
 │   └── assets/
-│       ├── tiles/          # ~534 tile PNGs: dirt.png, grass.png, tile_01.png … tile_538.png
+│       ├── tiles/          # ~536 tile PNGs: dirt.png, grass.png, tile_01.png … tile_548.png
 │       └── sprites/        # Character sprites: survivor*, zombie*, robot*
 └── dist/                   # Built output (index.html + assets/ + JS bundle)
     ├── index.html
@@ -72,7 +72,7 @@ that implements a **virtual module** named `@tile-keys`.
 - It collects all `*.png` filenames, strips extensions, **excludes** `dirt` and
   `grass`, **sorts** the remaining keys alphabetically (string sort, so
   `tile_10` sorts before `tile_2`... however in practice the keys are zero-padded
-  `tile_01` through `tile_538`), then prepends `['dirt', 'grass']` as the first
+  `tile_01` through `tile_548`), then prepends `['dirt', 'grass']` as the first
   two entries.
 - The sorted array is exported as the module's default export.
 
@@ -98,7 +98,7 @@ const TILE_KEYS = tileKeys;
 
 Tiles are drawn onto a single `RenderTexture` (64×64 grid) covering the entire
 2000×2000 world. Using a render texture means the ground is drawn once, not per
-frame — important for performance with ~534 tile variants.
+frame — important for performance with ~536 tile variants.
 
 ### 3. Phaser Scene Lifecycle
 
@@ -189,7 +189,7 @@ Two systems:
 - **Count:** 536 files (including `dirt.png` and `grass.png`)
 - **Naming convention:** Two tiers:
   - Named (semantic): `dirt.png`, `grass.png`
-  - Numbered: `tile_01.png` through `tile_538.png` (zero-padded to 2 digits)
+  - Numbered: `tile_01.png` through `tile_548.png` (zero-padded to 2 digits)
     - Note: Files are sorted **lexicographically** (string sort), not
       numerically. Always zero-pad to maintain correct ordering.
 - **Grid:** 64×64 px tiles, drawn on a RenderTexture covering 2000×2000
