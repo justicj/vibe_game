@@ -140,12 +140,19 @@ screen, no level transitions — it's a pure survival wave.
 - **Collision model:** Uses `overlap` (not `collider`) — enemies push the player
   but not each other. On hit, player loses 1 HP, gets 1s of invulnerability
   (flashing alpha), no knockback.
-- **Upgrade engine:** Two upgrade types defined in `this.upgrades`:
+- **Upgrade engine:** Two combat upgrade types defined in `this.upgrades`:
   - **Spinning Blade** — orbiting melee (level-based speed/size/count scaling)
   - **Piercing Projectiles** — ranged with penetration (level-based scaling)
   Both use exponential scaling: `value = base × 2^(level-1)` with size using
-  a 1.5× modifier. *(Note: upgrades are defined but the player must trigger
-  them — currently via the upgrade button system not yet wired for input.)*
+  a 1.5× modifier.
+- **Persistence & Meta-Upgrades:** Player XP, kill counts, and permanent stat upgrades (Gun Power, Movement Speed, Pickup Range, Triple Shot) are persisted in `localStorage`.
+- **Enemy Variants:**
+  - **Zombie:** 1 HP, 10 XP, slower movement.
+  - **Robot:** 4 HP, 50 XP, faster movement.
+- **Loot System:** Enemies drop XP gems (cyan diamonds) or occasionally Heart gems (red hearts, 10% drop chance if player is below max HP).
+- **Triple Shot:** One-time meta-upgrade (500 XP) that adds two additional bullets at a 12° spread.
+- **Visual Improvements:** Character and enemy sizes are reduced by 30% for better scale relative to the world.
+- **Invulnerability:** 1s window after hit with alpha flashing; protects against multiple hits in quick succession.
 
 ### 6. Blood / VFX System
 
