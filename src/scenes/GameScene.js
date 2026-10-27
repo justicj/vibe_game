@@ -31,8 +31,12 @@ export default class GameScene extends Phaser.Scene {
    * Preload – load sprite images and tiles; generate bullet/blood textures.
    */
   preload() {
+    this.load.setBaseURL(import.meta.env.BASE_URL);
     // Player sprite – top-down survivor facing right (51x43, rotation 0 = right)
     this.load.image('player', 'assets/sprites/survivor1_gun.png');
+
+    // Hitman sprite – assassin character
+    this.load.image('hitman', 'assets/sprites/hitman1_gun.png');
 
     // Enemy sprite – top-down zombie facing right (35x43, rotation 0 = right)
     this.load.image('enemy', 'assets/sprites/zombie1_hold.png');
@@ -50,6 +54,16 @@ export default class GameScene extends Phaser.Scene {
     bulletGfx.fillRect(0, 0, 8, 4);
     bulletGfx.generateTexture('bullet', 8, 4);
     bulletGfx.destroy();
+
+    if (!this.textures.exists('blade')) {
+      const bladeGfx = this.make.graphics({ x: 0, y: 0, add: false });
+      bladeGfx.fillStyle(0xddeeff, 1);
+      bladeGfx.fillTriangle(12, 0, 4, 17, 20, 17);
+      bladeGfx.fillStyle(0x667788, 1);
+      bladeGfx.fillRect(10, 17, 4, 7);
+      bladeGfx.generateTexture('blade', 24, 24);
+      bladeGfx.destroy();
+    }
 
     // Blood particle – small red circle
     const bloodGfx = this.make.graphics({ x: 0, y: 0, add: false });
@@ -95,7 +109,12 @@ export default class GameScene extends Phaser.Scene {
     this.invulnerable = false;
     this.gameOver = false;
     this.upgradeScreenVisible = false;
+    this.pointerTarget = null;
     this.startTime = this.time.now;
+
+    // Accept character selection from StartScene
+    const selectedCharacter = this.scene.settings.data.selectedCharacter;
+    const isHitman = selectedCharacter === 'hitman';
 
     // ---- Persistent stats (loaded from localStorage) ----
     this.loadProgress();
@@ -106,11 +125,11 @@ export default class GameScene extends Phaser.Scene {
     this.playerSpeed = 200 + this.progress.upgrades.moveSpeed * 50;
     this.pickupRange = 50 + this.progress.upgrades.pickupRange * 25;
     this.bulletSpeed = 400 + this.progress.upgrades.gunPower * 100;
-    this.bulletDamage = 1 + this.progress.upgrades.gunPower;
+    this.weaponDamage = 1 + this.progress.upgrades.gunPower;
     this.fireRate = Math.max(100, 800 - this.progress.upgrades.fireRate * 100);
     this.lastFiredTime = 0;
 
-    // XP collected this run (spend on the post-death upgrade screen)
+    // XP collected this run (spend on the end-of-run upgrade screen)
     this.xp = this.progress.currentXP;
     this.progress.currentXP = this.xp;
 
@@ -139,7 +158,8 @@ export default class GameScene extends Phaser.Scene {
     this.xpText.setDepth(10);
 
     // ---- 1. Player ----
-    this.player = this.physics.add.sprite(worldWidth / 2, worldHeight / 2, 'player');
+    const playerSprite = isHitman ? 'hitman' : 'player';
+    this.player = this.physics.add.sprite(worldWidth / 2, worldHeight / 2, playerSprite);
     this.player.setCollideWorldBounds(true);
     this.player.setDepth(1);
     // Circular physics body sized to the character body (diameter ~36, centered)
@@ -148,11 +168,14 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, false, 1, 1);
     this.cameras.main.centerOn(this.player.x, this.player.y);
 
+    this.hitmanMode = isHitman;
+
     // Persistent stats – keep a live reference so spend/save stays simple
     this.upgradeCosts = {
       gunPower: () => (this.progress.upgrades.gunPower + 1) * 10,
       moveSpeed: () => (this.progress.upgrades.moveSpeed + 1) * 10,
       pickupRange: () => (this.progress.upgrades.pickupRange + 1) * 10,
+      fireRate: () => (this.progress.upgrades.fireRate + 1) * 10,
     };
 
     // Keyboard controls (WASD / Arrow)
@@ -195,9 +218,6 @@ export default class GameScene extends Phaser.Scene {
 
     // ---- 4. Upgrade engine data structure ----
     // Combat upgrades that scale per level
-    this.bladeGroup = this.physics.add.group();
-    this.physics.add.overlap(this.bladeGroup, this.enemies, this.onBladeHit, undefined, this);
-
     this.upgrades = [
       {
         name: 'Spinning Blade',
@@ -205,10 +225,13 @@ export default class GameScene extends Phaser.Scene {
         baseSpeed: 2,
         baseSize: 12,
         baseCount: 1,
-        get level() { return this.scene.progress.upgrades.spinningBlade; },
-        get speed() { return this.baseSpeed + (this.level - 1) * 0.5; },
+        get level() { return Math.max(this.baseCount, this.scene.progress.upgrades.spinningBlade); },
+        get speed() {
+          const upgrades = this.scene.progress.upgrades;
+          return this.baseSpeed + (this.level - 1 + upgrades.gunPower + upgrades.fireRate) * 0.5;
+        },
         get size() { return this.baseSize * Math.pow(1.2, this.level - 1); },
-        get count() { return this.level; },
+        get count() { return Math.max(this.level, this.scene.progress.upgrades.tripleShot > 0 ? 3 : this.baseCount); },
         scene: this,
       },
       {
@@ -219,8 +242,15 @@ export default class GameScene extends Phaser.Scene {
         scene: this,
       },
     ];
-
-    this.createBlades();
+    if (isHitman) {
+      this.bladeGroup = this.physics.add.group();
+      this.createBlades();
+      this.physics.add.overlap(this.bladeGroup, this.enemies, this.onBladeHit, undefined, this);
+      this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.updateBlades, this);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.updateBlades, this);
+      });
+    }
 
     // ---- 5. Touch / Mouse controls ----
     // Simple relative movement: pointer down sets a target direction
@@ -252,6 +282,100 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemies, this.onPlayerHit, undefined, this);
     // Bullet vs enemy collision – destroys both and spawns blood
     this.physics.add.overlap(this.bullets, this.enemies, this.onBulletHit, undefined, this);
+
+    this.events.on(Phaser.Scenes.Events.PRE_UPDATE, this.handlePlayerMovement, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.PRE_UPDATE, this.handlePlayerMovement, this);
+    });
+    this.setupPauseMenu();
+  }
+
+  /** Use native buttons so touch targets stay readable when the canvas scales. */
+  setupPauseMenu() {
+    this.pauseButton = document.getElementById('pause-button');
+    this.pauseDialog = document.getElementById('pause-dialog');
+    const resumeButton = document.getElementById('resume-button');
+    const upgradeButton = document.getElementById('upgrade-button');
+    const quitButton = document.getElementById('quit-button');
+    const controls = [this.pauseButton, this.pauseDialog];
+    const inputEvents = ['mousedown', 'mouseup', 'touchstart', 'touchend'];
+    const stopInput = (event) => event.stopPropagation();
+    const pause = () => this.pauseGame();
+    const resume = () => this.resumeGame();
+    const upgrade = () => this.endRun();
+    const quit = () => this.quitToMenu();
+    const cancel = (event) => {
+      event.preventDefault();
+      this.resumeGame();
+    };
+    const escape = (event) => {
+      if (event.key !== 'Escape' || event.repeat || this.gameOver) return;
+      event.preventDefault();
+      if (this.pauseDialog.open) {
+        this.resumeGame();
+      } else {
+        this.pauseGame();
+      }
+    };
+
+    this.pauseButton.hidden = false;
+    this.pauseButton.addEventListener('click', pause);
+    resumeButton.addEventListener('click', resume);
+    upgradeButton.addEventListener('click', upgrade);
+    quitButton.addEventListener('click', quit);
+    this.pauseDialog.addEventListener('cancel', cancel);
+    document.addEventListener('keydown', escape);
+    controls.forEach((control) => {
+      inputEvents.forEach((name) => control.addEventListener(name, stopInput));
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.pauseButton.hidden = true;
+      this.pauseDialog.close();
+      this.pauseButton.removeEventListener('click', pause);
+      resumeButton.removeEventListener('click', resume);
+      upgradeButton.removeEventListener('click', upgrade);
+      quitButton.removeEventListener('click', quit);
+      this.pauseDialog.removeEventListener('cancel', cancel);
+      document.removeEventListener('keydown', escape);
+      controls.forEach((control) => {
+        inputEvents.forEach((name) => control.removeEventListener(name, stopInput));
+      });
+    });
+  }
+
+  /** Pause the whole scene, including physics, timers, and tweens. */
+  pauseGame() {
+    if (this.gameOver || !this.scene.isActive() || this.pauseDialog.open) return;
+
+    this.pauseStartedAt = this.game.loop.now;
+    this.pointerTarget = null;
+    this.player.setVelocity(0, 0);
+    this.input.keyboard.resetKeys();
+    this.pauseDialog.showModal();
+    this.scene.pause();
+  }
+
+  /** Resume without counting paused time toward survival or weapon cooldowns. */
+  resumeGame() {
+    if (!this.pauseDialog.open) return;
+
+    const pausedDuration = this.game.loop.now - this.pauseStartedAt;
+    this.startTime += pausedDuration;
+    this.lastFiredTime += pausedDuration;
+    this.enemies.getChildren().forEach((enemy) => {
+      const lastHit = enemy.getData('lastBladeHit');
+      if (lastHit !== undefined) enemy.setData('lastBladeHit', lastHit + pausedDuration);
+    });
+    this.pauseDialog.close();
+    this.pauseButton.focus({ preventScroll: true });
+    this.scene.resume();
+  }
+
+  /** Save collected progress and end the current run without a death penalty. */
+  quitToMenu() {
+    this.progress.currentXP = this.xp;
+    this.saveProgress();
+    this.scene.start('StartScene');
   }
 
   /**
@@ -294,8 +418,6 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.handlePlayerMovement();
-    this.updateBlades();
     this.updateEnemies();
     this.handleShooting();
     this.updateGems();
@@ -303,18 +425,24 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Update the HUD with current HP and survival time */
-  updateHUD() {
+  updateHUD(time = this.time.now) {
     this.hpText.setText(`HP: ${this.hp}/${this.maxHP}`);
-    const survived = Math.floor((this.time.now - this.startTime) / 1000);
+    const survived = Math.floor((time - this.startTime) / 1000);
     this.timerText.setText(`Survived: ${survived}s`);
     this.xpText.setText(`XP: ${this.xp}`);
   }
 
-  /** Handle keyboard and pointer based movement */
-  handlePlayerMovement() {
+  /** Steer before physics advances, using this frame's pointer and step duration. */
+  handlePlayerMovement(time, delta) {
+    if (this.gameOver) return;
+
     const speed = this.playerSpeed;
     let vx = 0;
     let vy = 0;
+
+    if (this.pointerTarget && !this.pointerTarget.isDown) {
+      this.pointerTarget = null;
+    }
 
     // Keyboard
     if (this.cursors.left.isDown || this.wasd.left.isDown) vx -= speed;
@@ -324,14 +452,22 @@ export default class GameScene extends Phaser.Scene {
 
     // Pointer (touch / mouse) – move toward pointer while pressed
     if (this.pointerTarget) {
-      const angle = Phaser.Math.Angle.Between(
-        this.player.x,
-        this.player.y,
-        this.pointerTarget.worldX,
-        this.pointerTarget.worldY
-      );
-      vx = Math.cos(angle) * speed;
-      vy = Math.sin(angle) * speed;
+      // Input-event world coordinates go stale as the camera follows the player.
+      this.pointerTarget.updateWorldPoint(this.cameras.main);
+      const dx = this.pointerTarget.worldX - this.player.body.center.x;
+      const dy = this.pointerTarget.worldY - this.player.body.center.y;
+      const distance = Math.hypot(dx, dy);
+      const stopRadius = 8;
+      vx = 0;
+      vy = 0;
+
+      if (distance > stopRadius) {
+        const physicsFPS = this.physics.world.fps;
+        const stepSeconds = Math.max(1, Math.ceil(delta * physicsFPS / 1000)) / physicsFPS;
+        const moveSpeed = Math.min(speed, (distance - stopRadius) / stepSeconds);
+        vx = (dx / distance) * moveSpeed;
+        vy = (dy / distance) * moveSpeed;
+      }
     }
 
     this.player.setVelocity(vx, vy);
@@ -341,8 +477,10 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Handle shooting – space bar fires a bullet forward */
+  /** Auto-fire the Survivor's gun; Hitman blades orbit continuously. */
   handleShooting() {
+    if (this.hitmanMode) return;
+
     // Auto-fire whenever the time since last shot exceeds the fireRate
     if (this.time.now - this.lastFiredTime > this.fireRate) {
       this.fireBullet();
@@ -363,6 +501,43 @@ export default class GameScene extends Phaser.Scene {
       // Standard single shot
       this.spawnBullet(this.player.rotation);
     }
+  }
+
+  /** Create a fixed set of orbiting blades for the Hitman's effective level. */
+  createBlades() {
+    const bladeDef = this.upgrades.find(u => u.key === 'spinningBlade');
+
+    for (let i = 0; i < bladeDef.count; i++) {
+      const blade = this.bladeGroup.create(this.player.x, this.player.y, 'blade');
+      blade.setDepth(2);
+      blade.setScale(bladeDef.size / bladeDef.baseSize);
+      blade.body.setCircle(bladeDef.baseSize);
+      blade.body.moves = false;
+    }
+
+    this.updateBlades();
+  }
+
+  /** Orbit blades on widening rings, alternating direction between rings. */
+  updateBlades() {
+    if (this.gameOver) return;
+
+    const bladeDef = this.upgrades.find(u => u.key === 'spinningBlade');
+    const blades = this.bladeGroup.getChildren();
+    const phase = ((this.time.now - this.startTime) / 1000) * bladeDef.speed;
+    const baseRadius = 40;
+    const orbitSpacing = 24;
+
+    blades.forEach((blade, i) => {
+      const direction = i % 2 === 0 ? 1 : -1;
+      const radius = baseRadius + i * orbitSpacing;
+      const angle = phase * direction + (i * Math.PI * 2) / blades.length;
+      const x = this.player.x + Math.cos(angle) * radius;
+      const y = this.player.y + Math.sin(angle) * radius;
+      blade.setPosition(x, y);
+      blade.rotation = angle;
+      blade.body.updateFromGameObject();
+    });
   }
 
   /** Helper to spawn a single bullet at a specific angle */
@@ -495,11 +670,20 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** End the game: pause physics, show GAME OVER overlay */
+  /** Show the upgrade screen after the player is defeated. */
   triggerGameOver() {
+    this.endRun(true);
+  }
+
+  /** End a run, saving XP and opening upgrades without returning to the menu. */
+  endRun(defeated = false) {
+    if (this.gameOver) return;
+    if (this.pauseDialog.open) this.resumeGame();
+
     this.gameOver = true;
-    this.hp = 0;
-    this.updateHUD();
+    this.pauseButton.hidden = true;
+    if (defeated) this.hp = 0;
+    this.updateHUD(this.game.loop.now);
 
     // Stop enemy spawning
     if (this.spawnTimer) {
@@ -517,15 +701,15 @@ export default class GameScene extends Phaser.Scene {
     this.progress.currentXP = this.xp;
     this.saveProgress();
 
-    // Show the post-death upgrade selection screen
-    this.showUpgradeScreen();
+    // Show the end-of-run upgrade selection screen
+    this.showUpgradeScreen(defeated ? 'GAME OVER' : 'RUN ENDED');
   }
 
   /** Called when a bullet hits an enemy – destroys both and spawns blood */
   onBulletHit(bullet, enemy) {
     // Damage enemy
     let hp = enemy.getData('hp') || 1;
-    hp -= this.bulletDamage;
+    hp -= this.weaponDamage;
     enemy.setData('hp', hp);
 
     // Visual feedback for hit
@@ -535,9 +719,6 @@ export default class GameScene extends Phaser.Scene {
     let penetration = bullet.getData('penetration') || 0;
     if (penetration > 0) {
       bullet.setData('penetration', penetration - 1);
-      // Brief invulnerability for enemy to this specific bullet to prevent multi-hits
-      // But actually Phaser's overlap with group already handles this mostly.
-      // We'll just let it fly.
     } else {
       bullet.destroy();
     }
@@ -553,6 +734,8 @@ export default class GameScene extends Phaser.Scene {
       } else {
         this.progress.kills[type] = 1;
       }
+      // Also increment total kills if we want to track it
+      this.progress.kills.total = (this.progress.kills.total || 0) + 1;
       this.saveProgress();
 
       this.dropLoot(enemy.x, enemy.y, xpValue);
@@ -704,81 +887,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------
-  // Spinning Blades
+  // End-of-run upgrade screen
   // ------------------------------------------------------------------
 
-  /** Create blade sprites based on the current level. */
-  createBlades() {
-    this.bladeGroup.clear(true, true);
-    const bladeDef = this.upgrades.find(u => u.key === 'spinningBlade');
-    const level = bladeDef.level;
-    if (level <= 0) return;
-
-    const count = bladeDef.count;
-    const size = bladeDef.size;
-
-    // Use a white circle for the blade
-    const bladeGfx = this.make.graphics({ x: 0, y: 0, add: false });
-    bladeGfx.fillStyle(0xffffff, 0.8);
-    bladeGfx.fillCircle(size, size, size);
-    bladeGfx.generateTexture(`blade_${level}`, size * 2, size * 2);
-    bladeGfx.destroy();
-
-    for (let i = 0; i < count; i++) {
-      const blade = this.bladeGroup.create(this.player.x, this.player.y, `blade_${level}`);
-      blade.setDepth(1);
-      blade.body.setCircle(size);
-    }
-  }
-
-  /** Update blade positions to orbit the player. */
-  updateBlades() {
-    const bladeDef = this.upgrades.find(u => u.key === 'spinningBlade');
-    const level = bladeDef.level;
-    if (level <= 0) return;
-
-    const blades = this.bladeGroup.getChildren();
-    const time = this.time.now / 1000;
-    const speed = bladeDef.speed;
-    const radius = 80;
-
-    blades.forEach((blade, i) => {
-      const angle = (time * speed) + (i * (Math.PI * 2) / blades.length);
-      blade.x = this.player.x + Math.cos(angle) * radius;
-      blade.y = this.player.y + Math.sin(angle) * radius;
-    });
-  }
-
-  /** Damage enemies on blade contact. */
-  onBladeHit(blade, enemy) {
-    // To prevent rapid damage, we'd need a cooldown per enemy
-    // For now, let's just do a small amount of damage or rely on the physics overlap rate
-    const lastHit = enemy.getData('lastBladeHit') || 0;
-    if (this.time.now - lastHit < 500) return;
-
-    enemy.setData('lastBladeHit', this.time.now);
-    
-    let hp = enemy.getData('hp') || 1;
-    hp -= 1; // Blades do 1 damage
-    enemy.setData('hp', hp);
-    this.spawnBlood(enemy.x, enemy.y);
-
-    if (hp <= 0) {
-      const xpValue = enemy.getData('xpValue') || 10;
-      const type = enemy.getData('type') || 'zombie';
-      if (this.progress.kills[type] !== undefined) this.progress.kills[type]++;
-      this.saveProgress();
-      this.dropLoot(enemy.x, enemy.y, xpValue);
-      enemy.destroy();
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // Post-death upgrade screen
-  // ------------------------------------------------------------------
-
-  /** Build the camera-fixed upgrade selection overlay shown on death. */
-  showUpgradeScreen() {
+  /** Build the camera-fixed upgrade selection overlay shown after a run. */
+  showUpgradeScreen(heading = 'GAME OVER') {
     const cam = this.cameras.main;
     const cx = cam.width / 2;
     const cy = cam.height / 2;
@@ -788,8 +901,8 @@ export default class GameScene extends Phaser.Scene {
     bg.setScrollFactor(0);
     bg.setDepth(30);
 
-    const title = this.add.text(cx, cy - 140, 'GAME OVER', {
-      fontSize: '48px',
+    const title = this.add.text(cx, cy - 246, heading, {
+      fontSize: '40px',
       color: '#ff0000',
       fontStyle: 'bold',
       align: 'center',
@@ -800,8 +913,8 @@ export default class GameScene extends Phaser.Scene {
 
     // Display kill counts
     const killsText = `Kills: ${this.progress.kills.zombie} Zombies | ${this.progress.kills.robot} Robots`;
-    const killsLabel = this.add.text(cx, cy - 100, killsText, {
-      fontSize: '18px',
+    const killsLabel = this.add.text(cx, cy - 202, killsText, {
+      fontSize: '16px',
       color: '#ffffff',
       fontStyle: 'bold',
     });
@@ -809,8 +922,8 @@ export default class GameScene extends Phaser.Scene {
     killsLabel.setDepth(31);
     killsLabel.setOrigin(0.5);
 
-    const xpLabel = this.add.text(cx, cy - 65, `XP to spend: ${this.xp}`, {
-      fontSize: '28px',
+    const xpLabel = this.add.text(cx, cy - 164, `XP to spend: ${this.xp}`, {
+      fontSize: '24px',
       color: '#00ffff',
       fontStyle: 'bold',
       align: 'center',
@@ -821,38 +934,44 @@ export default class GameScene extends Phaser.Scene {
     this.upgradeScreenXPText = xpLabel;
 
     const upgradeDefs = [
-      { key: 'gunPower', label: 'Gun Power', color: '#ffff00' },
-      { key: 'fireRate', label: 'Fire Rate', color: '#ff8888' },
-      { key: 'moveSpeed', label: 'Movement Speed', color: '#00ff00' },
-      { key: 'pickupRange', label: 'Pickup Range', color: '#00ffff' },
-      { key: 'tripleShot', label: 'Triple Shot', color: '#ff00ff' },
-      { key: 'spinningBlade', label: 'Spinning Blade', color: '#ffaa00' },
-      { key: 'piercingProjectiles', label: 'Piercing Projectiles', color: '#aaaaff' },
-      { key: 'maxHP', label: 'Max Health', color: '#ff5555' },
+      { key: 'gunPower', color: '#ffff00' },
+      { key: 'fireRate', color: '#ff8888' },
+      { key: 'moveSpeed', color: '#00ff00' },
+      { key: 'pickupRange', color: '#00ffff' },
+      { key: 'tripleShot', color: '#ff00ff' },
+      { key: 'spinningBlade', color: '#ffaa00' },
+      { key: 'piercingProjectiles', color: '#aaaaff' },
+      { key: 'maxHP', color: '#ff5555' },
     ];
 
     this.upgradeButtons = [];
     upgradeDefs.forEach((def, i) => {
-      const btn = this.add.text(cx, cy + 10 + i * 70, this.upgradeButtonText(def.key), {
-        fontSize: '24px',
+      const x = cx + (i % 2 === 0 ? -180 : 180);
+      const y = cy - 94 + Math.floor(i / 2) * 76;
+      const btn = this.add.text(x, y, this.upgradeButtonText(def.key), {
+        fontSize: '18px',
         color: def.color,
         fontStyle: 'bold',
         backgroundColor: '#333333',
         padding: { x: 12, y: 6 },
+        fixedWidth: 336,
+        fixedHeight: 66,
+        align: 'center',
+        lineSpacing: 6,
       });
       btn.setScrollFactor(0);
       btn.setDepth(31);
       btn.setOrigin(0.5);
-      btn.setInteractive();
-      btn.on('pointerdown', (pointer) => {
-        pointer.event.stopPropagation();
+      btn.setInteractive({ useHandCursor: true });
+      btn.on('pointerdown', (pointer, localX, localY, event) => {
+        event.stopPropagation();
         this.applyUpgrade(def.key);
       });
       this.upgradeButtons.push({ key: def.key, text: btn });
     });
 
-    const resetBtn = this.add.text(cx - 150, cy + 260, 'RESET DATA', {
-      fontSize: '20px',
+    const resetBtn = this.add.text(cx - 250, cy + 236, 'RESET DATA', {
+      fontSize: '18px',
       color: '#ffaaaa',
       fontStyle: 'bold',
       backgroundColor: '#442222',
@@ -862,14 +981,14 @@ export default class GameScene extends Phaser.Scene {
     resetBtn.setDepth(31);
     resetBtn.setOrigin(0.5);
     resetBtn.setInteractive();
-    resetBtn.on('pointerdown', (pointer) => {
-      pointer.event.stopPropagation();
+    resetBtn.on('pointerdown', (pointer, localX, localY, event) => {
+      event.stopPropagation();
       localStorage.removeItem('topdown-survival-progress');
       this.scene.restart();
     });
 
-    const continueBtn = this.add.text(cx + 100, cy + 260, 'CONTINUE (R)', {
-      fontSize: '26px',
+    const continueBtn = this.add.text(cx, cy + 236, 'CONTINUE (R)', {
+      fontSize: '22px',
       color: '#ffffff',
       fontStyle: 'bold',
       backgroundColor: '#555555',
@@ -879,9 +998,26 @@ export default class GameScene extends Phaser.Scene {
     continueBtn.setDepth(31);
     continueBtn.setOrigin(0.5);
     continueBtn.setInteractive();
-    continueBtn.on('pointerdown', (pointer) => {
-      pointer.event.stopPropagation();
+    continueBtn.on('pointerdown', (pointer, localX, localY, event) => {
+      event.stopPropagation();
       this.continueFromUpgradeScreen();
+    });
+
+    const menuBtn = this.add.text(cx + 250, cy + 236, 'BACK TO MENU', {
+      fontSize: '18px',
+      color: '#aaaaaa',
+      fontStyle: 'bold',
+      backgroundColor: '#333333',
+      padding: { x: 12, y: 8 },
+    });
+    menuBtn.setScrollFactor(0);
+    menuBtn.setDepth(31);
+    menuBtn.setOrigin(0.5);
+    menuBtn.setInteractive();
+    menuBtn.on('pointerdown', (pointer, localX, localY, event) => {
+      event.stopPropagation();
+      this.upgradeScreenVisible = false;
+      this.scene.start('StartScene');
     });
 
     this.upgradeScreenVisible = true;
@@ -890,11 +1026,11 @@ export default class GameScene extends Phaser.Scene {
   /** Label text for an upgrade button (level + cost / affordability). */
   upgradeButtonText(key) {
     const labelMap = {
-      gunPower: 'Gun Power',
-      fireRate: 'Fire Rate',
+      gunPower: this.hitmanMode ? 'Blade Power' : 'Gun Power',
+      fireRate: this.hitmanMode ? 'Orbit Speed' : 'Fire Rate',
       moveSpeed: 'Movement Speed',
       pickupRange: 'Pickup Range',
-      tripleShot: 'Triple Shot',
+      tripleShot: this.hitmanMode ? 'Triple Blades' : 'Triple Shot',
       spinningBlade: 'Spinning Blade',
       piercingProjectiles: 'Piercing Projectiles',
       maxHP: 'Max Health',
@@ -905,20 +1041,20 @@ export default class GameScene extends Phaser.Scene {
     if (key === 'maxHP') {
       const cost = 50;
       const affordable = this.xp >= cost;
-      return `Max Health (Lv ${lvl}) — ${affordable ? '[Buy 50 XP]' : '(Cost 50 XP)'}`;
+      return `Max Health (Lv ${lvl})\n${affordable ? 'Buy 50 XP' : 'Cost 50 XP'}`;
     }
 
     // Triple shot is a one-time upgrade for 500 XP
     if (key === 'tripleShot') {
-      if (lvl > 0) return 'Triple Shot (MAX)';
+      if (lvl > 0) return `${labelMap[key]}\nMAX`;
       const cost = 500;
       const affordable = this.xp >= cost;
-      return `Triple Shot — ${affordable ? '[Buy 500 XP]' : '(Cost 500 XP)'}`;
+      return `${labelMap[key]}\n${affordable ? 'Buy 500 XP' : 'Cost 500 XP'}`;
     }
 
     const cost = (lvl + 1) * 10;
     const affordable = this.xp >= cost;
-    return `${labelMap[key]} (Lv ${lvl}) — ${affordable ? `[Buy ${cost} XP]` : `(Cost ${cost} XP)`}`;
+    return `${labelMap[key]} (Lv ${lvl})\n${affordable ? `Buy ${cost} XP` : `Cost ${cost} XP`}`;
   }
 
   /** Spend available XP to buy one level of the named upgrade. */
@@ -959,5 +1095,34 @@ export default class GameScene extends Phaser.Scene {
     // XP is now persisted and accumulates across runs
     this.saveProgress();
     this.scene.restart();
+  }
+
+  /** Handle blade-enemy collisions */
+  onBladeHit(blade, enemy) {
+    if (this.gameOver || !enemy.active) return;
+
+    // Prevent rapid damage
+    const lastHit = enemy.getData('lastBladeHit');
+    if (lastHit !== undefined && this.time.now - lastHit < 500) return;
+    enemy.setData('lastBladeHit', this.time.now);
+
+    let hp = enemy.getData('hp') || 1;
+    hp -= this.weaponDamage;
+    enemy.setData('hp', hp);
+    this.spawnBlood(enemy.x, enemy.y);
+
+    if (hp <= 0) {
+      const xpValue = enemy.getData('xpValue') || 10;
+      const type = enemy.getData('type') || 'zombie';
+      if (this.progress.kills[type] !== undefined) {
+        this.progress.kills[type]++;
+      } else {
+        this.progress.kills[type] = 1;
+      }
+      this.progress.kills.total = (this.progress.kills.total || 0) + 1;
+      this.saveProgress();
+      this.dropLoot(enemy.x, enemy.y, xpValue);
+      enemy.destroy();
+    }
   }
 }

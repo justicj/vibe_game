@@ -7,10 +7,58 @@
   <style>
     body { margin: 0; overflow: hidden; background: #000; }
     #game { width: 100vw; height: 100vh; }
+    #game canvas { touch-action: none; }
+    .menu-button {
+      min-width: 44px;
+      min-height: 48px;
+      padding: 12px 20px;
+      border: 2px solid #888;
+      border-radius: 8px;
+      background: #222;
+      color: #fff;
+      font: bold 18px monospace;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .menu-button:focus-visible { outline: 3px solid #0f8; outline-offset: 3px; }
+    #pause-button {
+      position: fixed;
+      top: max(12px, env(safe-area-inset-top));
+      right: max(12px, env(safe-area-inset-right));
+      z-index: 20;
+    }
+    #pause-dialog {
+      box-sizing: border-box;
+      width: min(360px, calc(100vw - 32px));
+      max-height: calc(100dvh - 32px);
+      padding: 24px;
+      border: 2px solid #666;
+      border-radius: 12px;
+      background: #181818;
+      color: #fff;
+      font: 16px/1.5 monospace;
+      text-align: center;
+    }
+    #pause-dialog::backdrop { background: rgb(0 0 0 / 75%); }
+    #pause-dialog h2 { margin-top: 0; }
+    .pause-actions { display: grid; gap: 16px; }
+    #resume-button { background: #006638; }
+    #upgrade-button { background: #554400; }
+    #quit-button { background: #663333; }
   </style>
 </head>
 <body>
   <div id="game"></div>
+  <button id="pause-button" class="menu-button" aria-haspopup="dialog" aria-controls="pause-dialog" hidden>Menu</button>
+  <dialog id="pause-dialog" aria-labelledby="pause-title" aria-describedby="pause-description">
+    <h2 id="pause-title">PAUSED</h2>
+    <p id="pause-description">End this run to spend XP on upgrades, or return to character selection. Earned XP and upgrades are saved.</p>
+    <div class="pause-actions">
+      <button id="resume-button" class="menu-button" autofocus>Resume</button>
+      <button id="upgrade-button" class="menu-button">End Run &amp; Upgrade</button>
+      <button id="quit-button" class="menu-button">Quit to Menu</button>
+    </div>
+  </dialog>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

@@ -44,6 +44,8 @@ function tileDiscoveryPlugin() {
 }
 
 export default defineConfig({
+  // The Pages workflow supplies the site's subpath; local development stays at /.
+  base: process.env.PAGES_BASE_PATH || '/',
   plugins: [tileDiscoveryPlugin()],
   // Default root is project root where index.html lives
   server: {

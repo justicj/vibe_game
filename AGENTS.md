@@ -153,6 +153,7 @@ screen, no level transitions — it's a pure survival wave.
 - **Triple Shot:** One-time meta-upgrade (500 XP) that adds two additional bullets at a 12° spread.
 - **Visual Improvements:** Character and enemy sizes are reduced by 30% for better scale relative to the world.
 - **Invulnerability:** 1s window after hit with alpha flashing; protects against multiple hits in quick succession.
+- **Character Selection:** Players can choose between "Survivor" (standard) and "Hitman" (stealth assassin) at the start screen. The Hitman features spinning blades as their primary weapon instead of traditional bullets, providing a different playstyle focused on close-range blade combat.
 
 ### 6. Blood / VFX System
 
