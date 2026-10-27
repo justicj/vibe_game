@@ -1,0 +1,15 @@
+FROM qwen2.5-coder:14b
+
+# Optimize context for 24 GB unified memory headroom
+PARAMETER num_ctx 16384
+
+# Cap single-turn generation length to prevent memory saturation
+PARAMETER num_predict 4096
+
+# Maintain stable, deterministic code output
+PARAMETER temperature 0.1
+PARAMETER repeat_penalty 1.1
+
+# Enforce explicit stop boundaries
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|im_start|>"
