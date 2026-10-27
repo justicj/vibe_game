@@ -37,7 +37,7 @@ shared between characters. Existing saves carry over without resetting progress.
 
 The stick appears on touch-capable/coarse-pointer devices (including hybrid
 laptops), with a fallback to show it when touch or pen input is first detected.
-Its size is independent of canvas scaling. It captures one finger at a time
+Its compact 112px size is independent of canvas scaling. It captures one finger at a time
 and resets on release, cancellation, focus loss, resizing, pausing, or ending a
 run. Desktop mouse and keyboard controls remain available on hybrid devices.
 After a game over, press R to continue with the same character and saved upgrades.
@@ -59,6 +59,9 @@ automatically without restarting the run, including when browser toolbars
 change the available height. Portrait still works with letterboxing; rotation
 is not locked. The joystick and Menu button stay at fixed CSS sizes and respect
 device safe areas in either orientation.
+
+The game currently has no sound. Phaser audio is disabled to avoid creating an
+unused AudioContext and triggering browser autoplay warnings.
 
 ## Publishing to GitHub Pages
 

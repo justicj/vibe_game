@@ -8,6 +8,9 @@ const config = {
   width: 1024,
   height: 576,
   backgroundColor: '#111',
+  audio: {
+    noAudio: true,
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
